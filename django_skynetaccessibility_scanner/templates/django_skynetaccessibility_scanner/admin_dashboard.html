@@ -1,0 +1,317 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}SkynetAccessibility Scanner | {{ site_title|default:"Django site admin" }}{% endblock %}
+
+{% block content_title %}
+<h1>SkynetAccessibility Scanner</h1>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+    &rsaquo; SkynetAccessibility Scanner
+</div>
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'django_skynetaccessibility_scanner/css/skynet_scanner.css' %}">
+<style>
+  /* ── Inline domain-save form ──────────────────────────────────────── */
+  .skynet-domain-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f5f0ff;
+    border-left: 4px solid #420083;
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .skynet-domain-bar label {
+    font-weight: 600;
+    color: #420083;
+    white-space: nowrap;
+  }
+  .skynet-domain-bar input[type="text"] {
+    flex: 1;
+    min-width: 220px;
+    padding: 7px 10px;
+    border: 1px solid #c3aee8;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .skynet-domain-bar button {
+    background: #420083;
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .skynet-domain-bar button:hover { background: #5c00b8; }
+  .skynet-domain-bar .skynet-domain-hint {
+    font-size: 12px;
+    color: #666;
+    width: 100%;
+    margin: 0;
+  }
+</style>
+
+<!-- ───────────────── Full Scanner Dashboard ───────────────────────── -->
+<div class="scanning-monitoring-app" id="skynetAppRoot">
+
+    <!-- LOADING OVERLAY -->
+    <div id="skynetLoading" class="skynet-loading-overlay">
+        <img src="{% static 'django_skynetaccessibility_scanner/img/assets/loader.gif' %}"
+             alt="Loading..." style="width:64px;height:64px;"/>
+        <p style="margin-top:12px;color:#420083;font-weight:500;">
+            Loading accessibility data...
+        </p>
+    </div>
+
+    <!-- ERROR BANNER -->
+    <div id="skynetErrorBanner" class="skynet-error-banner" style="display:none;">
+        <span>Warning: </span>
+        <span id="skynetErrorMsg"></span>
+    </div>
+
+    <!-- SECTION 1 — MAIN DASHBOARD -->
+    <div id="skynetSection1" class="scans" style="display:none;">
+
+        <h2 class="title">My Scans</h2>
+
+        <section class="status">
+            <div class="page-background"></div>
+            <div class="status-card" id="skynetScanScoreCard" style="cursor:pointer;">
+                <span class="status-title">Scan Score</span>
+                <div class="status-value" id="skynetScanScoreValue"></div>
+            </div>
+            <div class="status-card">
+                <span class="status-title">Last Scanned</span>
+                <div class="status-value" id="skynetLastScannedValue"></div>
+            </div>
+        </section>
+
+        <hr class="divider"/>
+
+        <!-- FREE / TRIAL PLAN -->
+        <section id="skynetPlanFree" class="plan" style="display:none;">
+            <div class="page-background"></div>
+            <div class="plan-info">
+                <div class="plans-left">
+                    <div class="plan-type free">
+                        <div class="icon-circle">
+                            <img src="{% static 'django_skynetaccessibility_scanner/img/assets/round.svg' %}" alt="Round" height="20" width="20"/>
+                        </div>
+                        <span id="skynetFreePlanName">Free Plan</span>
+                    </div>
+                    <div class="plan-desc">
+                        <ul><li id="skynetFreePlanPages">Scan up to 10 Pages</li></ul>
+                    </div>
+                    <span class="plan-badge" id="skynetFreePlanBadge">Current Plan</span>
+                </div>
+                <div class="plans-right">
+                    <span class="plan-renewal" id="skynetFreeExpiry">Expires on: <strong>—</strong></span>
+                    <span class="cancel-btn" id="skynetFreeActivateBtn"
+                          onclick="window._skynetBtnClick('free-activate', event)" style="cursor:pointer;">
+                        Activate Now
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ACTIVE PLAN -->
+        <section id="skynetPlanActive" class="plan" style="display:none;">
+            <div class="page-background"></div>
+            <div class="plan-info">
+                <div class="plans-left">
+                    <div class="plan-type">
+                        <div class="icon-circle">
+                            <img src="{% static 'django_skynetaccessibility_scanner/img/assets/round.svg' %}" alt="Round" height="20" width="20"/>
+                        </div>
+                        <span id="skynetActivePlanName"></span>
+                    </div>
+                    <div class="plan-desc">
+                        <ul><li id="skynetActivePlanPages"></li></ul>
+                    </div>
+                    <span class="plan-badge" id="skynetActivePlanBadge">Current Plan</span>
+                </div>
+                <div class="plans-right">
+                    <span class="plan-renewal" id="skynetActiveRenewal">Renews on: <strong>—</strong></span>
+                    <span class="cancel-btn" id="skynetCancelSubBtn"
+                          onclick="window._skynetBtnClick('cancel-sub', event)" style="cursor:pointer;">
+                        Cancel Subscription
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- EXPIRED PLAN -->
+        <section id="skynetPlanExpired" class="plan" style="display:none;">
+            <div class="page-background"></div>
+            <div class="plan-info">
+                <div class="plans-left">
+                    <div class="plan-type skynet-expired-title">
+                        <div class="icon-circle">
+                            <img src="{% static 'django_skynetaccessibility_scanner/img/assets/round.svg' %}" alt="Round" height="20" width="20"/>
+                        </div>
+                        <span id="skynetExpiredTitle">Your Plan has Expired</span>
+                    </div>
+                </div>
+                <div class="plans-right">
+                    <span class="plan-renewal" id="skynetExpiredDate"></span>
+                    <span class="cancel-btn" id="skynetExpiredActivateBtn"
+                          onclick="window._skynetBtnClick('expired-renew', event)"
+                          style="background-color:#420083;color:#fff;cursor:pointer;">
+                        Renew Plan
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- CANCELLED PLAN -->
+        <section id="skynetPlanCancelled" class="plan" style="display:none;">
+            <div class="page-background"></div>
+            <div class="plan-info">
+                <div class="plans-left">
+                    <div class="plan-type">
+                        <div class="icon-circle">
+                            <img src="{% static 'django_skynetaccessibility_scanner/img/assets/round.svg' %}" alt="Round" height="20" width="20"/>
+                        </div>
+                        <span id="skynetCancelledPlanName"></span>
+                    </div>
+                    <div class="plan-desc">
+                        <ul><li id="skynetCancelledPlanPages"></li></ul>
+                    </div>
+                    <span class="plan-badge skynet-badge-cancelled" id="skynetCancelledPlanBadge">Cancelled Plan</span>
+                </div>
+                <div class="plans-right">
+                    <span class="plan-renewal" id="skynetCancelledExpiry">Expires on: <strong>—</strong></span>
+                    <span class="cancel-btn" id="skynetRenewPlanBtn"
+                          onclick="window._skynetBtnClick('cancelled-renew', event)"
+                          style="background-color:#420083;color:#fff;cursor:pointer;">
+                        Renew Plan
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRICING SECTION -->
+        <section class="pricing">
+            <div class="page-background"></div>
+            <div class="billing-toggle">
+                <span class="label active" id="monthly-label">Pay Monthly</span>
+                <div class="switch">
+                    <div id="skynetBillingToggleWrapper"></div>
+                    <span class="slider" id="skynetBillingSlider"></span>
+                </div>
+                <span class="label" id="annual-label">Pay Annually</span>
+                <span class="save">Save 20%</span>
+            </div>
+            <div id="skynetMonthlyTiers" class="pricing-tiers"></div>
+            <div id="skynetAnnualTiers" class="pricing-tiers" style="display:none;"></div>
+            <p class="pricing-contact">
+                Are you looking for a custom plan or Enterprise plan? Contact us
+                <a href="mailto:hello@skynettechnologies.com">hello@skynettechnologies.com</a>
+            </p>
+        </section>
+
+        <!-- HELP SECTION -->
+        <section class="help">
+            <p class="help-text">
+                <strong>Facing any issues with SkynetAccessibility Scanner?</strong>
+                Report a problem, we will get back to you very soon!
+            </p>
+            <a href="https://www.skynettechnologies.com/report-accessibility-problem"
+               target="_blank" class="help-btn" role="button">Report a problem</a>
+        </section>
+
+    </div><!-- end Section 1 -->
+
+    <!-- SECTION 2 — WCAG VIOLATION REPORT -->
+    <div id="skynetSection2" class="accessibility-report" style="display:none;">
+
+        <div class="report-date">
+            <span style="font-weight:500;">Report Date:</span>
+            <span id="skynetS2ReportDate" style="border:1px solid #ccc;padding:8px 14px;border-radius:6px;font-weight:500;">—</span>
+        </div><br/>
+
+        <section class="top-section">
+            <div class="card score-card">
+                <h3>Accessibility Score</h3>
+                <div class="accessibility-score">
+                    <div class="score-value" id="skynetS2ScoreValue">0%</div>
+                    <span class="status-text not-compliant" id="skynetS2StatusText">Not Compliant</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="skynetS2ScoreBar" style="width:0%;"></div>
+                </div>
+                <p class="note">Automated Accessibility score has limitations. We recommend Manual Accessibility Audit.</p>
+            </div>
+            <div class="card pages-card">
+                <h3>Web Pages Scanned</h3>
+                <div class="pages-value" id="skynetS2PagesValue">0</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="skynetS2PagesBar" style="width:0%;"></div>
+                </div>
+                <p class="note" id="skynetS2PagesNote">0 pages scanned out of 0</p>
+            </div>
+        </section><br/><br/>
+
+        <section class="wcag-section">
+            <div class="wcag-header">
+                <h3>WCAG 2.1/2.2</h3>
+                <span class="view-btn" id="skynetS2ViewViolationsBtn"
+                      onclick="window._skynetBtnClick('view-violations', event)" style="cursor:pointer;">
+                    View all Violations
+                    <svg xmlns="http://www.w3.org/2000/svg" width="6" height="10" viewBox="0 0 6 10" fill="none">
+                        <path d="M6 5.00002C6 5.17924 5.92797 5.35843 5.78422 5.49507L1.25832 9.79486C0.970413 10.0684 0.503627 10.0684 0.21584 9.79486C-0.0719468 9.52145 -0.0719468 9.07807 0.21584 8.80452L4.22061 5.00002L0.21598 1.19549C-0.0718073 0.921968 -0.0718073 0.478632 0.21598 0.205242C0.503767 -0.0684128 0.970553 -0.0684128 1.25846 0.205242L5.78436 4.50496C5.92814 4.64166 6 4.82086 6 5.00002Z" fill="white"/>
+                    </svg>
+                </span>
+            </div>
+            <div class="checks-grid">
+                <div class="check-card failed">
+                    <span class="check-value" id="skynetS2FailedChecks">0</span>
+                    <span class="check-label">Failed Checks</span>
+                </div>
+                <div class="check-card passed">
+                    <span class="check-value" id="skynetS2PassedChecks">0</span>
+                    <span class="check-label">Passed Checks</span>
+                </div>
+                <div class="check-card na">
+                    <span class="check-value" id="skynetS2NAChecks">0</span>
+                    <span class="check-label">N/A Checks</span>
+                </div>
+            </div>
+            <hr class="divider"/>
+            <div class="violations-grid">
+                <div class="violation-card">
+                    <span class="violation-title">Level A</span>
+                    <span class="violation-count"><span id="skynetS2LevelA">0</span> violations</span>
+                </div>
+                <div class="violation-card">
+                    <span class="violation-title">Level AA</span>
+                    <span class="violation-count"><span id="skynetS2LevelAA">0</span> violations</span>
+                </div>
+                <div class="violation-card">
+                    <span class="violation-title">Level AAA</span>
+                    <span class="violation-count"><span id="skynetS2LevelAAA">0</span> violations</span>
+                </div>
+            </div>
+        </section><br/><br/>
+
+        <span class="back-btn" id="skynetBackBtn"
+              onclick="window._skynetBtnClick('back', event)" style="cursor:pointer;">Back</span>
+
+    </div><!-- end Section 2 -->
+
+</div><!-- end scanning-monitoring-app -->
+
+<script src="{% static 'django_skynetaccessibility_scanner/js/skynet_scanner.js' %}"></script>
+
+{% endblock %}

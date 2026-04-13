@@ -1,0 +1,31 @@
+/* Skynet Accessibility Scanner — Django Admin styles */
+
+.skynet-admin-header {
+    background: #420083;
+    color: #fff;
+    padding: 16px 20px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.skynet-admin-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.skynet-admin-header p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.skynet-readonly-note {
+    background: #f5f0ff;
+    border-left: 4px solid #420083;
+    padding: 10px 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+    color: #333;
+    margin-bottom: 16px;
+}
