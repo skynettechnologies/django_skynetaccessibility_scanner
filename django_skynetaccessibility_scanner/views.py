@@ -1,17 +1,4 @@
-"""
-views.py - DjangoSkynetAccessibility Scanner Django views.
-
-Responsibilities:
-  1. ScannerDashboardView  - renders the main scanner HTML page.
-  2. get_user_info         - returns the currently logged-in Django admin
-                             user's data as JSON so the browser JS can call
-                             the Skynet API directly with real credentials.
-                             (mirrors Odoo's /web/session/get_session_info)
-
-NOTE: All Skynet API calls are made DIRECTLY from the browser JS.
-      There are NO server-side proxy views in this module.
-"""
-
+import ipaddress
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -20,32 +7,59 @@ from django.views import View
 
 from .models import DjangoSkynetScannerSettings
 
+# Domain Validation
 
-# ---------------------------------------------------------------------------
+INVALID_HOSTS = {
+    'localhost',
+    '127.0.0.1',
+    '::1',
+    '0.0.0.0',
+}
+
+def get_invalid_domain_message(host):
+    """
+    Returns an error message string if the host is a loopback, private,
+    or unspecified address/hostname — otherwise returns None.
+    """
+    # Shared base message used by both rejection branches
+    base = f'"{host}" is not a valid domain. Please use your public domain name.'
+
+    if host.lower() in INVALID_HOSTS:
+        return base
+
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_loopback or ip.is_private or ip.is_unspecified:
+            return f'IP addresses and local hosts are not supported. {base}'
+    except ValueError:
+        pass  # host is a real hostname — fine
+
+    return None
+
 # Dashboard View
-# ---------------------------------------------------------------------------
 
 class ScannerDashboardView(View):
     template_name = 'django_skynetaccessibility_scanner/admin_dashboard.html'
+
     def get(self, request, *args, **kwargs):
         scheme = 'https' if request.is_secure() else 'http'
         host   = request.get_host().split(':')[0]
         domain = f'{scheme}://{host}'
 
+        invalid_domain_message = get_invalid_domain_message(host)
+
         cfg = DjangoSkynetScannerSettings.objects.first()
 
         context = {
-            'cfg':        cfg,
-            'domain':     domain,
-            'website_id': cfg.website_id if cfg else '',
-            'csrf_token': get_token(request),
+            'cfg':                    cfg,
+            'domain':                 domain,
+            'website_id':             cfg.website_id if cfg else '',
+            'csrf_token':             get_token(request),
+            'invalid_domain_message': invalid_domain_message,
         }
         return render(request, self.template_name, context)
 
-
-# ---------------------------------------------------------------------------
 # Live user-info endpoint  (browser JS calls this to get admin credentials)
-# ---------------------------------------------------------------------------
 
 @login_required
 def get_user_info(request):
@@ -58,25 +72,25 @@ def get_user_info(request):
     The JS passes these credentials straight to the Skynet
     /api/register-domain-platform endpoint (no server-side proxy needed).
     """
-    user = request.user
+    user     = request.user
+    username = (getattr(user, 'username', '') or '').strip()
+    email    = (getattr(user, 'email', '') or '').strip()
 
-    email = (getattr(user, 'email', '') or '').strip()
-
-    if not email:
-        username = (getattr(user, 'username', '') or '').strip()
-        if '@' in username:
-            email = username
+    # Fall back to username if it looks like an email
+    if not email and '@' in username:
+        email = username
 
     full_name = ''
     if callable(getattr(user, 'get_full_name', None)):
         full_name = (user.get_full_name() or '').strip()
 
-    name = full_name or (getattr(user, 'username', '') or '').strip()
+    # Use full name if available, otherwise fall back to username
+    name = full_name or username
 
     return JsonResponse({
         'is_authenticated': True,
         'uid':              user.pk,
-        'username':         getattr(user, 'username', '') or '',
+        'username':         username,
         'email':            email,
         'name':             name,
     })

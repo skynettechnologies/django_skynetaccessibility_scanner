@@ -88,6 +88,59 @@
         return new Date().toISOString().slice(0, 10);
     }
 
+    /* ── Domain Validation ───────────────────────────────────────────── */
+    const INVALID_HOSTS = new Set([
+        'localhost', '127.0.0.1', '::1', '0.0.0.0',
+    ]);
+
+    function isInvalidDomain(hostname) {
+        if (!hostname) return true;
+        const h = hostname.toLowerCase();
+
+        // Direct match against known invalid hostnames
+        if (INVALID_HOSTS.has(h)) return true;
+
+        // // Block any private / loopback IPv4 range
+        const ipv4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+        if (ipv4) {
+            const [, a, b] = ipv4.map(Number);
+            if (
+                a === 10 ||                          // 10.x.x.x
+                (a === 172 && b >= 16 && b <= 31) || // 172.16–31.x.x
+                (a === 192 && b === 168) ||           // 192.168.x.x
+                a === 127                             // 127.x.x.x
+            ) return true;
+        }
+
+        // Block raw IPv6 addresses (already covers ::1 via INVALID_HOSTS,
+        // but catches other IPv6 loopback / link-local forms too)
+        if (h.includes(':')) return true;
+
+        return false;
+    }
+
+    function showDomainError(message) {
+        const loadingEl   = document.getElementById('skynetLoading');
+        const section1    = document.getElementById('skynetSection1');
+        const section2    = document.getElementById('skynetSection2');
+        const errorBanner = document.getElementById('skynetErrorBanner');
+
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (section1)  section1.style.display  = 'none';
+        if (section2)  section2.style.display  = 'none';
+
+        if (errorBanner) {
+            errorBanner.innerHTML = `
+                <div style="
+                    background:#fff3cd;border:1px solid #ffc107;color:#856404;
+                    padding:16px 20px;border-radius:6px;margin:20px 0;font-size:15px;
+                ">
+                    ⚠️ <strong>Domain Not Valid:</strong> ${message}
+                </div>`;
+            errorBanner.style.display = 'block';
+        }
+    }
+
     /* ── Fetch Django admin user info from /scanner/api/user-info/ ───── */
     async function getDjangoUserInfo(fallbackDomain) {
         try {
@@ -605,6 +658,17 @@
         let domain = '';
         try { domain = new URL(websiteUrl).hostname; }
         catch (e) { domain = websiteUrl.replace(/^https?:\/\//, '').split('/')[0]; }
+
+        /* ── Domain Validation: block localhost / private IPs ────────── */
+        if (isInvalidDomain(domain)) {
+            showDomainError(
+                `"${domain}" is not a valid domain. ` +
+                `Localhost and private IP addresses cannot be scanned. ` +
+                `Please deploy your site to a public domain and access the scanner from there.`
+            );
+            return;   // ← stop all API calls immediately
+        }
+        /* ─────────────────────────────────────────────────────────────── */
 
         appData.websiteUrl = websiteUrl;
         appData.domain     = domain;
