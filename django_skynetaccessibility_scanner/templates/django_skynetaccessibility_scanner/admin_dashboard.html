@@ -80,6 +80,62 @@
         <span id="skynetErrorMsg"></span>
     </div>
 
+    <!-- ── Email Registration Toggle ──────────────────────────────────── -->
+    <!--
+      Placed INSIDE .scanning-monitoring-app so it inherits the same
+      max-width (1280px) and padding as the scanner cards below it.
+      Shown only when userDataEmail is a no-reply@ placeholder.
+    -->
+    <div id="skynetEmailToggleWrapper" style="display:none;">
+      <div class="skynet-email-toggle-bar">
+        <span class="skynet-email-toggle-label">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px;">
+            <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" fill="#420083"/>
+          </svg>
+          Please enter your email for further scanning reports.
+        </span>
+        <button id="skynetEmailToggleBtn" class="skynet-email-toggle-btn" type="button"
+                onclick="window._skynetToggleEmailForm(event)">
+          <span id="skynetEmailToggleBtnText">Add Email</span>
+          <svg id="skynetEmailToggleArrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" style="margin-left:6px;transition:transform 0.25s;">
+            <path d="M7 10l5 5 5-5H7z" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Collapsible registration form -->
+      <div id="skynetEmailFormPanel" class="skynet-email-form-panel" style="display:none;">
+        <div class="skynet-email-form-inner">
+          <h3 class="skynet-email-form-title">Register Your Details</h3>
+          <div id="skynetEmailFormError" class="skynet-email-form-error" style="display:none;"></div>
+          <div id="skynetEmailFormSuccess" class="skynet-email-form-success" style="display:none;"></div>
+          <div class="skynet-email-form-row">
+            <label class="skynet-email-form-label" for="skynetRegName">Full Name <span style="color:#e53e3e;">*</span></label>
+            <input id="skynetRegName" class="skynet-email-form-input" type="text"
+                   placeholder="Enter your full name" autocomplete="name" />
+          </div>
+          <div class="skynet-email-form-row">
+            <label class="skynet-email-form-label" for="skynetRegEmail">Email Address <span style="color:#e53e3e;">*</span></label>
+            <input id="skynetRegEmail" class="skynet-email-form-input" type="email"
+                   placeholder="Enter your email address" autocomplete="email" />
+          </div>
+          <div class="skynet-email-form-actions">
+            <button id="skynetRegSaveBtn" class="skynet-email-save-btn" type="button"
+                    onclick="window._skynetSaveEmail(event)">
+              <span id="skynetRegSaveBtnText">Save</span>
+              <svg id="skynetRegSaveSpinner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   style="display:none;margin-left:8px;animation:skynet-spin 0.8s linear infinite;">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"
+                        stroke-dasharray="31.4" stroke-dashoffset="10"/>
+              </svg>
+            </button>
+            <button class="skynet-email-cancel-btn" type="button"
+                    onclick="window._skynetToggleEmailForm(event)">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- SECTION 1 — MAIN DASHBOARD -->
     <div id="skynetSection1" class="scans" style="display:none;">
 

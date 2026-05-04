@@ -1,13 +1,4 @@
-/**
- * skynet_scanner.js  — Django edition
- *
- * All Skynet API calls are made DIRECTLY from the browser.
- * No Django proxy server is used.
- *
- * User credentials are fetched from /scanner/api/user-info/
- * (the Django @login_required endpoint) — mirroring Odoo's
- * /web/session/get_session_info pattern.
- */
+
 (function () {
     if (typeof window.__skynetScannerLoaded !== 'undefined') {
         if (typeof window.waitAndInit === 'function') window.waitAndInit();
@@ -18,19 +9,25 @@
     /* ── API endpoints (direct, no proxy) ───────────────────────────── */
     const SKYNET_BASE_URL   = 'https://skynetaccessibilityscan.com';
     const REGISTER_API      = `${SKYNET_BASE_URL}/api/register-domain-platform`;
+    const UPDATE_USER_API   = `${SKYNET_BASE_URL}/api/update-user`;
     const SCAN_DETAIL_API   = `${SKYNET_BASE_URL}/api/get-scan-detail`;
     const SCAN_COUNT_API    = `${SKYNET_BASE_URL}/api/get-scan-count`;
     const PACKAGES_LIST_API = `${SKYNET_BASE_URL}/api/packages-list`;
     const ACTION_LINK_API   = `${SKYNET_BASE_URL}/api/generate-plan-action-link`;
-    const PLATFORM          = 'django';
+    const PLATFORM          = 'Django';
 
     /* ── Static asset paths ──────────────────────────────────────────── */
-    const STATIC_PREFIX = '/static/django_skynetaccessibility_scanner/img/assets';
+    const _root = document.getElementById('skynetAppRoot');
+    const _staticBase = _root ? _root.dataset.staticBase || '' : '';
+    const STATIC_PREFIX = _staticBase
+    ? _staticBase + '/assets'
+    : '/static/django_skynetaccessibility_scanner/img/assets';
     const PLAN_ICONS = [
         `${STATIC_PREFIX}/diamond.svg`,
         `${STATIC_PREFIX}/pentagon.svg`,
         `${STATIC_PREFIX}/hexagon.svg`,
         `${STATIC_PREFIX}/hexagon.svg`,
+        `${STATIC_PREFIX}/not-shared.svg`,
     ];
 
     /* ── App state ───────────────────────────────────────────────────── */
@@ -38,6 +35,7 @@
         domain:              '',
         websiteUrl:          '',
         websiteId:           '',
+        userId:              '',
         dashboardLink:       '',
         favIcon:             '',
         urlScanStatus:       0,
@@ -67,12 +65,61 @@
         scanDetails:         {},
         violationLink:       '#',
         plans:               [],
+        /* ── userData fields from get-scan-detail ── */
+        userDataId:          '',
+        userDataName:        '',
+        userDataEmail:       '',
+        userDataCompany:     '',
+        userDataWebsite:     '',
     };
 
     /* ── Utility helpers ─────────────────────────────────────────────── */
     function b64EncodeUrl(url) {
         try { return btoa(unescape(encodeURIComponent(url))); }
         catch (e) { return btoa(url); }
+    }
+
+    /* ── Domain Validation ───────────────────────────────────────────── */
+    const INVALID_HOSTS = new Set([
+        'localhost', '127.0.0.1', '::1', '0.0.0.0',
+    ]);
+
+    function isInvalidDomain(hostname) {
+        if (!hostname) return true;
+        const h = hostname.toLowerCase();
+        if (INVALID_HOSTS.has(h)) return true;
+        const ipv4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+        if (ipv4) {
+            const [, a, b] = ipv4.map(Number);
+            if (
+                a === 10 ||
+                (a === 172 && b >= 16 && b <= 31) ||
+                (a === 192 && b === 168) ||
+                a === 127
+            ) return true;
+        }
+        if (h.includes(':')) return true;
+        return false;
+    }
+
+    function showDomainError(message) {
+        const loadingEl   = document.getElementById('skynetLoading');
+        const section1    = document.getElementById('skynetSection1');
+        const section2    = document.getElementById('skynetSection2');
+        const errorBanner = document.getElementById('skynetErrorBanner');
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (section1)  section1.style.display  = 'none';
+        if (section2)  section2.style.display  = 'none';
+        if (errorBanner) {
+            errorBanner.innerHTML = `
+                <div style="
+                    background:#fff3cd;border:1px solid #ffc107;color:#856404;
+                    padding:16px 20px;border-radius:6px;margin:20px 0;font-size:15px;
+                ">
+                    ⚠️ <strong>Domain Not Valid:</strong> ${message}
+                </div>`;
+            errorBanner.style.display = 'block';
+        }
     }
 
     function fmtDate(val) {
@@ -88,102 +135,167 @@
         return new Date().toISOString().slice(0, 10);
     }
 
-    /* ── Domain Validation ───────────────────────────────────────────── */
-    const INVALID_HOSTS = new Set([
-        'localhost', '127.0.0.1', '::1', '0.0.0.0',
-    ]);
-
-    function isInvalidDomain(hostname) {
-        if (!hostname) return true;
-        const h = hostname.toLowerCase();
-
-        // Direct match against known invalid hostnames
-        if (INVALID_HOSTS.has(h)) return true;
-
-        // // Block any private / loopback IPv4 range
-        const ipv4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-        if (ipv4) {
-            const [, a, b] = ipv4.map(Number);
-            if (
-                a === 10 ||                          // 10.x.x.x
-                (a === 172 && b >= 16 && b <= 31) || // 172.16–31.x.x
-                (a === 192 && b === 168) ||           // 192.168.x.x
-                a === 127                             // 127.x.x.x
-            ) return true;
-        }
-
-        // Block raw IPv6 addresses (already covers ::1 via INVALID_HOSTS,
-        // but catches other IPv6 loopback / link-local forms too)
-        if (h.includes(':')) return true;
-
-        return false;
+    /* ── Email toggle helpers ─────────────────────────────────────────── */
+    function _skynetHandleEmailToggle() {
+        const wrapper = document.getElementById('skynetEmailToggleWrapper');
+        if (!wrapper) return;
+        const email = appData.userDataEmail || '';
+        const isFallback = !email || email.startsWith('no-reply@');
+        wrapper.style.display = isFallback ? 'block' : 'none';
     }
 
-    function showDomainError(message) {
-        const loadingEl   = document.getElementById('skynetLoading');
-        const section1    = document.getElementById('skynetSection1');
-        const section2    = document.getElementById('skynetSection2');
-        const errorBanner = document.getElementById('skynetErrorBanner');
+    window._skynetToggleEmailForm = function _skynetToggleEmailForm(e) {
+        if (e) e.preventDefault();
+        const wrapper = document.getElementById('skynetEmailToggleWrapper');
+        const panel   = document.getElementById('skynetEmailFormPanel');
+        if (!wrapper || !panel) return;
 
-        if (loadingEl) loadingEl.style.display = 'none';
-        if (section1)  section1.style.display  = 'none';
-        if (section2)  section2.style.display  = 'none';
-
-        if (errorBanner) {
-            errorBanner.innerHTML = `
-                <div style="
-                    background:#fff3cd;border:1px solid #ffc107;color:#856404;
-                    padding:16px 20px;border-radius:6px;margin:20px 0;font-size:15px;
-                ">
-                    ⚠️ <strong>Domain Not Valid:</strong> ${message}
-                </div>`;
-            errorBanner.style.display = 'block';
+        const isOpen = wrapper.classList.contains('skynet-form-open');
+        if (isOpen) {
+            panel.style.display = 'none';
+            wrapper.classList.remove('skynet-form-open');
+        } else {
+            panel.style.display = 'block';
+            wrapper.classList.add('skynet-form-open');
+            const errEl = document.getElementById('skynetEmailFormError');
+            const okEl  = document.getElementById('skynetEmailFormSuccess');
+            if (errEl) errEl.style.display = 'none';
+            if (okEl)  okEl.style.display  = 'none';
         }
-    }
+    };
 
-    /* ── Fetch Django admin user info from /scanner/api/user-info/ ───── */
-    async function getDjangoUserInfo(fallbackDomain) {
+    window._skynetSaveEmail = async function _skynetSaveEmail(e) {
+        if (e) e.preventDefault();
+
+        const nameInput  = document.getElementById('skynetRegName');
+        const emailInput = document.getElementById('skynetRegEmail');
+        const errEl      = document.getElementById('skynetEmailFormError');
+        const okEl       = document.getElementById('skynetEmailFormSuccess');
+        const saveBtn    = document.getElementById('skynetRegSaveBtn');
+        const saveTxt    = document.getElementById('skynetRegSaveBtnText');
+        const spinner    = document.getElementById('skynetRegSaveSpinner');
+
+        [nameInput, emailInput].forEach(el => el && el.classList.remove('skynet-input-error'));
+        if (errEl) errEl.style.display = 'none';
+        if (okEl)  okEl.style.display  = 'none';
+
+        const name  = (nameInput  && nameInput.value.trim())  || '';
+        const email = (emailInput && emailInput.value.trim()) || '';
+        let hasError = false;
+
+        if (!name) {
+            nameInput && nameInput.classList.add('skynet-input-error');
+            hasError = true;
+        }
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!email || !emailRe.test(email)) {
+            emailInput && emailInput.classList.add('skynet-input-error');
+            hasError = true;
+        }
+        if (hasError) {
+            if (errEl) { errEl.textContent = 'Please enter a valid name and email address.'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        if (saveBtn) saveBtn.disabled = true;
+        if (saveTxt) saveTxt.textContent = 'Saving…';
+        if (spinner) spinner.style.display = 'inline-block';
+
         try {
-            const r = await fetch('/scanner/api/user-info/', {
-                method:      'GET',
-                credentials: 'same-origin',
-            });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const info = await r.json();
-            return {
-                name:  info.name  || fallbackDomain,
-                email: info.email || `no-reply@${fallbackDomain}`,
-            };
-        } catch (e) {
-            return {
-                name:  fallbackDomain,
-                email: `no-reply@${fallbackDomain}`,
-            };
+            const resolvedUserId = appData.userId || appData.userDataId;
+            if (!resolvedUserId) {
+                throw new Error('Unable to retrieve user ID. Please refresh the page and try again.');
+            }
+
+            const websiteUrl = appData.websiteUrl || window.location.origin;
+            let domain = '';
+            try { domain = new URL(websiteUrl).hostname; }
+            catch (_) { domain = websiteUrl.replace(/^https?:\/\//, '').split('/')[0]; }
+
+            const resolvedCompany = appData.userDataCompany || domain;
+            const resolvedWebsite = appData.userDataWebsite || domain;
+
+            const form = new FormData();
+            form.append('user_id',      String(resolvedUserId));
+            form.append('name',         name);
+            form.append('email',        email);
+            form.append('comapny_name', resolvedCompany); 
+            form.append('website',      resolvedWebsite);
+
+            const resp = await fetch(UPDATE_USER_API, { method: 'POST', body: form });
+            if (!resp.ok) {
+                let errMsg = `Update User API HTTP ${resp.status}`;
+                try {
+                    const errJson = await resp.json();
+                    const raw = errJson.msg || errJson.message || errJson.error || '';
+                    errMsg = (typeof raw === 'string' && raw) ? raw : errMsg;
+                } catch (_) {}
+                throw new Error(errMsg);
+            }
+
+            let json;
+            try { json = await resp.json(); }
+            catch (_) { throw new Error('Invalid response from Update User API'); }
+
+            if (String(json.status) !== '1') {
+                const raw = json.msg || json.message || json.error || '';
+                throw new Error((typeof raw === 'string' && raw) ? raw : 'Update failed. Please try again.');
+            }
+
+            if (okEl) { okEl.textContent = 'Email registered successfully!'; okEl.style.display = 'block'; }
+            setTimeout(function () {
+                const wrapper = document.getElementById('skynetEmailToggleWrapper');
+                if (wrapper) wrapper.style.display = 'none';
+            }, 1200);
+
+        } catch (err) {
+            let msg = 'Update failed. Please try again.';
+            if (err instanceof Error)         { msg = err.message || msg; }
+            else if (typeof err === 'string') { msg = err; }
+            else if (err && typeof err === 'object') {
+                msg = err.msg || err.message || err.error || JSON.stringify(err);
+            }
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+        } finally {
+            if (saveBtn) saveBtn.disabled = false;
+            if (saveTxt) saveTxt.textContent = 'Save';
+            if (spinner) spinner.style.display = 'none';
         }
-    }
+    };
 
     /* ── Register domain directly from browser ───────────────────────── */
-    async function registerDomain(websiteUrl, userInfo, domain) {
+    async function registerDomain(websiteUrl, domain) {
         const form = new FormData();
         form.append('website',         b64EncodeUrl(websiteUrl));
         form.append('platform',        PLATFORM);
         form.append('is_trial_period', '1');
-        form.append('name',            userInfo.name  || domain);
-        form.append('email',           userInfo.email || `no-reply@${domain}`);
+        form.append('name',            domain);
+        form.append('email',           `no-reply@${domain}`);
         form.append('company_name',    domain);
         form.append('package_type',    '25-pages');
 
         const resp = await fetch(REGISTER_API, { method: 'POST', body: form });
         if (!resp.ok) throw new Error(`Register API HTTP ${resp.status}`);
-        const json = await resp.json();
-        if (String(json.status) !== '1') throw new Error(json.message || 'Register failed');
+
+        let json;
+        try { json = await resp.json(); }
+        catch (_) { throw new Error('Invalid response from Register API'); }
+
+        /* status 0 = domain already registered — valid, not an error */
+        if (String(json.status) !== '1' && String(json.status) !== '0') {
+            const apiMsg = json.message || json.error || JSON.stringify(json);
+            throw new Error(apiMsg || 'Registration failed. Please try again.');
+        }
         return json;
     }
 
     /* ── Fetch scan detail directly from browser ─────────────────────── */
     async function fetchScanDetail(websiteUrl) {
+        if (!websiteUrl) throw new Error('fetchScanDetail: websiteUrl is empty');
+
         const form = new FormData();
         form.append('website', b64EncodeUrl(websiteUrl));
+
         const resp = await fetch(SCAN_DETAIL_API, { method: 'POST', body: form });
         if (!resp.ok) throw new Error(`Scan Detail API HTTP ${resp.status}`);
         const json = await resp.json();
@@ -211,18 +323,34 @@
         appData.endDate            = data.end_date           || '';
         appData.cancelDate         = data.cancel_date        || '';
         appData.websiteId          = data.website_id         || '';
+        appData.userId             = data.user_id ? String(data.user_id) : appData.userId || '';
         appData.paypalSubscrId     = data.paypal_subscr_id   || '';
         appData.isTrialPeriod      = data.is_trial_period    || '';
         appData.dashboardLink      = json.dashboard_link     || '';
         appData.totalFailSum       = data.total_fail_sum     || '';
         appData.isExpired          = data.is_expired         || '';
+
+        /* ── Parse userData block ── */
+        const ud = json.userData || {};
+        appData.userDataId      = ud.id           ? String(ud.id) : appData.userDataId   || '';
+        appData.userDataName    = ud.name         || appData.userDataName    || '';
+        appData.userDataEmail   = ud.email        || appData.userDataEmail   || '';
+        appData.userDataCompany = ud.company_name || appData.userDataCompany || '';
+        appData.userDataWebsite = ud.website      || appData.userDataWebsite || '';
+
+        /* Prefer userData.id as authoritative user_id if data.user_id was absent */
+        if (!appData.userId && appData.userDataId) appData.userId = appData.userDataId;
+
         return json;
     }
 
     /* ── Fetch scan count directly from browser ──────────────────────── */
     async function fetchScanCount(websiteUrl) {
+        if (!websiteUrl) throw new Error('fetchScanCount: websiteUrl is empty');
+
         const form = new FormData();
         form.append('website', b64EncodeUrl(websiteUrl));
+
         const resp = await fetch(SCAN_COUNT_API, { method: 'POST', body: form });
         if (!resp.ok) throw new Error(`Scan Count API HTTP ${resp.status}`);
         const json = await resp.json();
@@ -261,13 +389,15 @@
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body:    new URLSearchParams({
                     website_id:         appData.websiteId,
-                    current_package_id: appData.packageId,
+                    current_package_id: appData.packageId || '',
                     action:             'violation',
                 }),
             });
             const vJson = await vResp.json();
             appData.violationLink = vJson.action_link || vJson.url || '#';
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[Skynet] generate-plan-action-link (violation) failed:', e);
+        }
 
         appData.plans = [];
         const today = getTodayStr();
@@ -406,21 +536,25 @@
     }
 
     function renderLastScanned() {
-        const el = document.getElementById('skynetLastScannedValue');
-        if (!el) return;
-        const us = parseInt(appData.urlScanStatus) || 0;
-        const ss = parseInt(appData.scanStatus)    || 0;
-        const STATIC = '/static/django_skynetaccessibility_scanner/img/assets/not-shared.svg';
-        if (us < 2 || ss === 0) {
-            el.innerHTML = `<span class="status-inactive"><img src="${STATIC}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">Not Started</span>`;
-        } else if (ss === 1 || ss === 2) {
-            el.innerHTML = `<span class="status-inactive"><img src="${STATIC}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">Scanning<br>${appData.totalScanPages}/${appData.totalSelectedPages}</span>`;
-        } else if (ss >= 3) {
-            el.innerHTML = `<span class="status-active">${appData.totalScanPages} Pages<br>${appData.lastScan ? fmtDate(appData.lastScan) : ''}</span>`;
-        } else {
-            el.innerHTML = `<span class="status-inactive">Not Started</span>`;
-        }
+    const el = document.getElementById('skynetLastScannedValue');
+    if (!el) return;
+    const us = parseInt(appData.urlScanStatus) || 0;
+    const ss = parseInt(appData.scanStatus)    || 0;
+    const STATIC = STATIC_PREFIX + '/not-shared.svg';
+
+    if (us < 2) {
+        el.innerHTML = `<span class="status-inactive"><img src="${STATIC}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">Not Started</span>`;
+    } else if (ss === 0) {
+        el.innerHTML = `<span class="status-inactive"><img src="${STATIC}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">Not Started</span>`;
+    } else if (ss === 1 || ss === 2) {
+        const scannedSoFar = appData.totalLastScanPages || appData.totalScanPages || 0;
+        el.innerHTML = `<span class="status-inactive"><img src="${STATIC}" alt="" style="height:16px;width:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">Scanning<br>${scannedSoFar}/${appData.totalSelectedPages}</span>`;
+    } else if (ss >= 3) {
+        el.innerHTML = `<span class="status-active">${appData.totalScanPages} Pages<br>${appData.lastScan ? fmtDate(appData.lastScan) : ''}</span>`;
+    } else {
+        el.innerHTML = `<span class="status-inactive">Not Started</span>`;
     }
+}
 
     function renderPlanBanner(planState) {
         ['skynetPlanFree','skynetPlanActive','skynetPlanExpired','skynetPlanCancelled'].forEach(id => {
@@ -469,14 +603,22 @@
                         const newWin = window.open('', '_blank');
                         try {
                             const resp = await fetch(ACTION_LINK_API, {
-                                method: 'POST',
+                                method:  'POST',
                                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                body: new URLSearchParams({ website_id: appData.websiteId, current_package_id: appData.packageId, action: 'cancel' }),
+                                body:    new URLSearchParams({
+                                    website_id:         appData.websiteId,
+                                    current_package_id: appData.packageId,
+                                    action:             'cancel',
+                                }),
                             });
                             const data = await resp.json();
                             const url  = data.action_link || data.url || data.link || data.redirect_url;
-                            if (url) { newWin.location.href = url; } else { newWin.close(); window.open(appData.dashboardLink || `${SKYNET_BASE_URL}/dashboard`, '_blank'); }
-                        } catch (err) { newWin.close(); window.open(appData.dashboardLink || `${SKYNET_BASE_URL}/dashboard`, '_blank'); }
+                            if (url) { newWin.location.href = url; }
+                            else     { newWin.close(); window.open(appData.dashboardLink || `${SKYNET_BASE_URL}/dashboard`, '_blank'); }
+                        } catch (err) {
+                            newWin.close();
+                            window.open(appData.dashboardLink || `${SKYNET_BASE_URL}/dashboard`, '_blank');
+                        }
                     };
                 }
                 el.style.display = 'block';
@@ -536,10 +678,10 @@
 
         appData.plans.forEach((plan, idx) => {
             const icon     = PLAN_ICONS[idx] || PLAN_ICONS[PLAN_ICONS.length - 1];
-            const price    = isAnnual ? plan.price          : plan.monthly_price;
-            const oldPrice = isAnnual ? plan.strick_price   : plan.strick_monthly_price;
-            const label    = isAnnual ? '/Year'             : '/Monthly';
-            const interval = isAnnual ? 'Y'                 : 'M';
+            const price    = isAnnual ? plan.price        : plan.monthly_price;
+            const oldPrice = isAnnual ? plan.strick_price : plan.strick_monthly_price;
+            const label    = isAnnual ? '/Year'           : '/Monthly';
+            const interval = isAnnual ? 'Y'               : 'M';
 
             const isCurrent         = String(plan.id) === String(appData.packageId);
             const isCurrentInterval = isCurrent && plan.interval === interval;
@@ -576,8 +718,8 @@
                 </div>`;
 
             const btn = document.createElement('button');
-            btn.type      = 'button';
-            btn.className = btnCls;
+            btn.type             = 'button';
+            btn.className        = btnCls;
             btn.dataset.action   = btnAction;
             btn.dataset.planId   = plan.id;
             btn.dataset.interval = interval;
@@ -588,6 +730,7 @@
         });
     }
 
+    /* ── renderViolationReport — exact Django logic ──────────────────── */
     function renderViolationReport() {
         const reportDateEl = document.getElementById('skynetS2ReportDate');
         if (reportDateEl) reportDateEl.textContent = appData.lastScan ? fmtDate(appData.lastScan) : '—';
@@ -632,7 +775,7 @@
         if (lvlAAA) lvlAAA.textContent = crit.AAA ?? 0;
     }
 
-    async function handlePlanBtnClick(e) {
+    function handlePlanBtnClick(e) {
         const btn = e.target.closest('.skynet-upgrade-btn');
         if (!btn) return;
         window._skynetTierClick(btn.dataset.planId, btn.dataset.action, btn.dataset.interval, e);
@@ -653,47 +796,76 @@
         if (section2)    section2.style.display    = 'none';
         if (errorBanner) errorBanner.style.display = 'none';
 
-        /* Determine website URL from current origin */
         const websiteUrl = window.location.origin;
         let domain = '';
         try { domain = new URL(websiteUrl).hostname; }
         catch (e) { domain = websiteUrl.replace(/^https?:\/\//, '').split('/')[0]; }
 
-        /* ── Domain Validation: block localhost / private IPs ────────── */
         if (isInvalidDomain(domain)) {
             showDomainError(
                 `"${domain}" is not a valid domain. ` +
                 `Localhost and private IP addresses cannot be scanned. ` +
                 `Please deploy your site to a public domain and access the scanner from there.`
             );
-            return;   // ← stop all API calls immediately
+            return;
         }
-        /* ─────────────────────────────────────────────────────────────── */
 
         appData.websiteUrl = websiteUrl;
         appData.domain     = domain;
 
-        /* Step 1: fetch Django admin user info (same-origin, session-based) */
-        const userInfo = await getDjangoUserInfo(domain);
+        /* Step 1: register domain */
+        try {
+            const registerJson = await registerDomain(websiteUrl, domain);
+            const rawUid = registerJson.user_id ?? registerJson.data?.user_id ?? registerJson.data?.id ?? '';
+            if (rawUid) appData.userId = String(rawUid);
+        } catch (e) {
+            console.warn('[Skynet] registerDomain failed:', e);
+        }
 
-        /* Step 2: register domain directly with Skynet API from browser */
-        try { await registerDomain(websiteUrl, userInfo, domain); } catch (e) {}
+        /* Step 2: fetch scan detail — populates appData.websiteId and
+         * appData.scanViolationTotal which are both needed downstream. */
+        try {
+            await fetchScanDetail(websiteUrl);
+        } catch (e) {
+            console.warn('[Skynet] fetchScanDetail failed:', e);
+        }
 
-        /* Step 3: fetch scan data directly from browser */
-        try { await fetchScanDetail(websiteUrl); } catch (e) {}
-        try { await fetchScanCount(websiteUrl);  } catch (e) {}
-        try { await fetchPackages(websiteUrl);   } catch (e) {}
+        /* Step 3: fetchScanCount — MUST run after fetchScanDetail so that
+         * appData.scanDetails is populated before renderViolationReport.
+         * FIX: moved inside the websiteId guard to mirror fetchPackages,
+         * ensuring the API call is only made when the domain is confirmed
+         * registered and scan data is available. */
+        if (appData.websiteId) {
+            try {
+                await fetchScanCount(websiteUrl);
+            } catch (e) {
+                console.warn('[Skynet] fetchScanCount failed:', e);
+            }
 
-        /* Step 4: render UI */
+            /* Step 4: fetchPackages also requires a valid websiteId */
+            try {
+                await fetchPackages(websiteUrl);
+            } catch (e) {
+                console.warn('[Skynet] fetchPackages failed:', e);
+            }
+        } else {
+            console.warn('[Skynet] Skipping fetchScanCount + fetchPackages — websiteId is empty after fetchScanDetail');
+        }
+
+        /* Step 5: show/hide email toggle */
+        _skynetHandleEmailToggle();
+
+        /* Step 6: render UI — renderViolationReport is now called AFTER
+         * fetchScanCount so appData.scanDetails is fully populated. */
         const planState = getPlanState();
         renderScanScore();
         renderLastScanned();
         renderPlanBanner(planState);
         renderPlanCards('skynetMonthlyTiers', false);
         renderPlanCards('skynetAnnualTiers',  true);
-        renderViolationReport();
+        renderViolationReport();  /* ← always called last, after all data is ready */
 
-        /* Step 5: billing toggle */
+        /* Step 7: billing toggle */
         const billingWrapper   = document.getElementById('skynetBillingToggleWrapper');
         const billingSlider    = document.getElementById('skynetBillingSlider');
         const monthlyLabel     = document.getElementById('monthly-label');

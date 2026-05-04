@@ -1,4 +1,4 @@
-/* Skynet Accessibility Scanner — Django Admin JS */
+/* SkynetAccessibility Scanner — Django Admin JS */
 (function () {
     'use strict';
 
@@ -9,7 +9,7 @@
 
         var header = document.createElement('div');
         header.className = 'skynet-admin-header';
-        header.innerHTML = '<h2>Skynet Accessibility Scanner Settings</h2>' +
+        header.innerHTML = '<h2>SkynetAccessibility Scanner Settings</h2>' +
             '<p>Domain registration and scan data are managed automatically. ' +
             'Most fields below are read-only and synced from the Skynet API.</p>';
         form.insertBefore(header, form.firstChild);

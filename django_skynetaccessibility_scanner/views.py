@@ -61,36 +61,3 @@ class ScannerDashboardView(View):
 
 # Live user-info endpoint  (browser JS calls this to get admin credentials)
 
-@login_required
-def get_user_info(request):
-    """
-    Returns the currently logged-in Django admin user's credentials as JSON.
-
-    Called from browser JS on every dashboard load — the same pattern as
-    Odoo's /web/session/get_session_info + /web/dataset/call_kw flow.
-
-    The JS passes these credentials straight to the Skynet
-    /api/register-domain-platform endpoint (no server-side proxy needed).
-    """
-    user     = request.user
-    username = (getattr(user, 'username', '') or '').strip()
-    email    = (getattr(user, 'email', '') or '').strip()
-
-    # Fall back to username if it looks like an email
-    if not email and '@' in username:
-        email = username
-
-    full_name = ''
-    if callable(getattr(user, 'get_full_name', None)):
-        full_name = (user.get_full_name() or '').strip()
-
-    # Use full name if available, otherwise fall back to username
-    name = full_name or username
-
-    return JsonResponse({
-        'is_authenticated': True,
-        'uid':              user.pk,
-        'username':         username,
-        'email':            email,
-        'name':             name,
-    })

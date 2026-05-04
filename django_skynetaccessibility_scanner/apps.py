@@ -4,7 +4,7 @@ from django.apps import AppConfig
 class DjangoSkynetScannerConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'django_skynetaccessibility_scanner'
-    verbose_name = 'Skynet Accessibility Scanner'
+    verbose_name = 'SkynetAccessibility Scanner'
 
     def ready(self):
         """
