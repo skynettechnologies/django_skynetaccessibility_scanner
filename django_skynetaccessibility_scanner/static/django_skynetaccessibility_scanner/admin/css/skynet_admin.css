@@ -29,3 +29,14 @@
     color: #333;
     margin-bottom: 16px;
 }
+
+/* ── Dark mode (Django admin's built-in data-theme="dark") ── */
+html[data-theme="dark"] .skynet-admin-header {
+    background: #6a2fb0;
+}
+
+html[data-theme="dark"] .skynet-readonly-note {
+    background: #2e1a4d;
+    border-left-color: #7b3fc4;
+    color: #eeeeee;
+}
