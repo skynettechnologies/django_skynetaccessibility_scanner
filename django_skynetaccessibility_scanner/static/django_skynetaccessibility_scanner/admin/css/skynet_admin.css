@@ -40,3 +40,15 @@ html[data-theme="dark"] .skynet-readonly-note {
     border-left-color: #7b3fc4;
     color: #eeeeee;
 }
+
+@media (prefers-color-scheme: dark) {
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-admin-header {
+      background: #6a2fb0;
+  }
+
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-readonly-note {
+      background: #2e1a4d;
+      border-left-color: #7b3fc4;
+      color: #eeeeee;
+  }
+}

@@ -106,15 +106,6 @@ Explore the full capabilities of the accessibility monitoring Django module. Fle
 ![Django CMS](https://img.shields.io/badge/django--cms-4.1.x%20%7C%205.0.0-blue)
 ![Django Oscar](https://img.shields.io/badge/django--oscar-3.2.x%20%7C%204.0-blue)
 
-### Compatibility Table
-
-If badges above do not display correctly, please refer to the table below:
-
-| **Python Versions**    | **Django Versions**                 | **Django CMS**      | **Django Oscar** |
-|------------------------|-------------------------------------|---------------------|------------------|
-| 3.10, 3.11, 3.12, 3.13 | 4.0, 4.1, 4.2, 5.0, 5.1, 5.2, 6.0 | 4.1.x (LTS), 5.0.0  | 3.2.x, 4.0       |
-
-> **Note:** Django 6.0 requires Python 3.12 or higher.
 
 ## Installation
 
@@ -144,46 +135,19 @@ INSTALLED_APPS = [
 ]
 ```
 
-2. Add URL routes in your project's `urls.py`:
-
-```python
-from django.urls import path, include
-
-urlpatterns = [
-    ...
-    path('', include('django_skynetaccessibility_scanner.urls')),
-]
-```
-
-3. Add the context processor in `settings.py` (optional — for template access):
-
-```python
-TEMPLATES = [
-    {
-        ...
-        'OPTIONS': {
-            'context_processors': [
-                ...
-                'django_skynetaccessibility_scanner.context_processors.skynet_scanner',
-            ],
-        },
-    },
-]
-```
-
-4. Run migrations:
+2. Run migrations:
 
 ```bash
 python manage.py migrate
 ```
 
-5. Collect static files:
+3. Collect static files:
 
 ```bash
 python manage.py collectstatic
 ```
 
-6. In the Admin panel, go to **Skynet Accessibility Scanner → DjangoSkynetAccessibility Scanner Settings**.
+5. In the Admin panel, go to **Skynet Accessibility Scanner → DjangoSkynetAccessibility Scanner Settings**.
 
 ## Using download zip
 

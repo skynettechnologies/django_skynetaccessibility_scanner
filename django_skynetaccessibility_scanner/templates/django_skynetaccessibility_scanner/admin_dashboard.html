@@ -77,6 +77,25 @@
   html[data-theme="dark"] .skynet-domain-bar .skynet-domain-hint {
     color: #aaa;
   }
+
+  @media (prefers-color-scheme: dark) {
+  /* ── Dark mode (Django admin's built-in data-theme="dark") ── */
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-domain-bar {
+    background: #2e1a4d;
+    border-left-color: #7b3fc4;
+  }
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-domain-bar label {
+    color: #c79bff;
+  }
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-domain-bar input[type="text"] {
+    background: #2b2b2b;
+    border-color: #4a2f7a;
+    color: #eeeeee;
+  }
+  html:is([data-theme="auto"], :not([data-theme])) .skynet-domain-bar .skynet-domain-hint {
+    color: #aaa;
+  }
+  }
 </style>
 
 <!-- ───────────────── Full Scanner Dashboard ───────────────────────── -->
@@ -86,7 +105,7 @@
     <div id="skynetLoading" class="skynet-loading-overlay">
         <img src="{% static 'django_skynetaccessibility_scanner/img/assets/loader.gif' %}"
              alt="Loading..." style="width:64px;height:64px;"/>
-        <p style="margin-top:12px;color:#420083;font-weight:500;">
+        <p class="skynet-loading-text" style="margin-top:12px;font-weight:500;">
             Loading accessibility data...
         </p>
     </div>
